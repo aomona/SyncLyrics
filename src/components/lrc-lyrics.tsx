@@ -360,7 +360,7 @@ const LrcLyrics: React.FC<PlayerLyricsProps> = ({
         `}
         style={{
           transition: 'margin-bottom 0.3s ease, --lyrics-mask-bottom-start 0.35s ease, --lyrics-mask-bottom-end 0.35s ease',
-            '--lyrics-mask-bottom-start': isMobile && settings.showplayercontrol && (mobileControlsVisible ?? true) ? '420px' : '12%',
+            '--lyrics-mask-bottom-start': isMobile && settings.showplayercontrol && (mobileControlsVisible ?? true) ? '400px' : '12%',
             '--lyrics-mask-bottom-end': isMobile && settings.showplayercontrol && (mobileControlsVisible ?? true) ? '600px' : '35%',
           maskImage: isMobile 
             ? 'linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) var(--lyrics-mask-bottom-start), #000 var(--lyrics-mask-bottom-end), #000 90%, rgba(0,0,0,0) 100%)'

@@ -345,3 +345,8 @@ export interface SimpleLyricLineProps {
   className?: string;
   style?: React.CSSProperties;
 }
+
+export type TextMarqueeProps = {
+  text: string;
+  className?: string;
+};

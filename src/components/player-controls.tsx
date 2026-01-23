@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { PlayerControlsProps } from '@/types';
+import { TextMarquee } from '@/components/text-marquee';
 
 const PlayerControls: React.FC<PlayerControlsProps> = ({
   isPlaying,
@@ -136,71 +137,74 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
             }
           }}
         >
-          <CardContent className="p-5">
+          <CardContent className={isMobile ? "px-0 !py-[40px]" : "p-5"}>
             {isMobile ? (
-              <div className="flex flex-col space-y-5">
+              <div className="flex flex-col space-y-6">
                 {/* Track Info */}
-                <div className="space-y-2 text-center">
-                  <p className="font-semibold text-base overflow-hidden text-nowrap text-ellipsis text-foreground drop-shadow-sm">
-                    {trackName.length > 35 ? `${trackName.slice(0, 35)}...` : trackName}
-                  </p>
-                  <p className="text-sm overflow-hidden text-nowrap text-ellipsis text-foreground/80 drop-shadow-md">
-                    {artistName.length > 35 ? `${artistName.slice(0, 35)}...` : artistName}
-                    {albumName && ` • ${albumName.length > 30 ? `${albumName.slice(0, 30)}...` : albumName}`}
-                  </p>
+                <div className="w-full px-[5px] space-y-1">
+                  <TextMarquee
+                    text={trackName}
+                    className="font-semibold text-base text-foreground"
+                  />
+                  <TextMarquee
+                    text={artistName}
+                    className="text-sm text-foreground/80"
+                  />
                 </div>
 
                 {/* Progress Bar */}
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-medium min-w-10 text-center text-foreground/90 drop-shadow-sm">
-                    {formatTime(currentTime)}
-                  </span>
+                <div className="space-y-3 !px-[30px]">
                   <Slider
                     value={[currentTime]}
                     max={duration}
                     step={0.1}
-                    className="flex-1 [&_.slider-track]:bg-foreground/15 [&_.slider-range]:bg-foreground dark:[&_.slider-range]:bg-primary/80 [&_.slider-thumb]:opacity-0"
+                    className="w-full [&_.slider-track]:bg-foreground/15 [&_.slider-range]:bg-foreground dark:[&_.slider-range]:bg-primary/80 [&_.slider-thumb]:opacity-0"
                     onValueChange={handleProgressChangeWithToggle}
                   />
-                  <span className="text-xs font-medium min-w-10 text-center text-foreground/90 drop-shadow-sm">
-                    {formatTime(duration)}
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-medium text-foreground/60 min-w-[36px] text-center">
+                      {formatTime(currentTime)}
+                    </span>
+                    <span className="text-[11px] font-medium text-foreground/60 min-w-[36px] text-center">
+                      {formatTime(duration)}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Playback Controls */}
-                <div className="flex justify-center items-center gap-6 py-3">
+                <div className="flex justify-center items-center gap-6 !px-[30px]">
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={handleSkipBackWithToggle}
-                    className="h-12 w-12 rounded-full hover:bg-foreground/15 active:scale-90 transition-all duration-200 text-foreground/90 hover:text-foreground drop-shadow-sm"
+                    className="h-12 w-12 rounded-full hover:bg-foreground/15 active:scale-90 transition-all duration-200 text-foreground/90 hover:text-foreground"
                   >
-                    <SkipBack className="fill-foreground" />
+                    <SkipBack className="fill-foreground !h-6 !w-6" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={handlePlayPause}
-                    className="h-16 w-16 rounded-full hover:bg-foreground/15 active:scale-90 transition-all duration-200 text-primary drop-shadow-lg"
+                    className="h-16 w-16 rounded-full hover:bg-foreground/15 active:scale-90 transition-all duration-200 text-primary"
                   >
                     {isPlaying ? (
-                      <Pause className="fill-foreground" />
+                      <Pause className="fill-foreground !h-8 !w-8" />
                     ) : (
-                      <Play className="fill-foreground" />
+                      <Play className="fill-foreground !h-8 !w-8" />
                     )}
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={handleSkipForwardWithToggle}
-                    className="h-12 w-12 rounded-full hover:bg-foreground/15 active:scale-90 transition-all duration-200 text-foreground/90 hover:text-foreground drop-shadow-sm"
+                    className="h-12 w-12 rounded-full hover:bg-foreground/15 active:scale-90 transition-all duration-200 text-foreground/90 hover:text-foreground"
                   >
-                    <SkipForward className="fill-foreground" />
+                    <SkipForward className="fill-foreground !h-6 !w-6" />
                   </Button>
                 </div>
 
                 {/* Volume Control */}
-                <div className="flex items-center gap-3 pb-4 px-2">
+                <div className="flex items-center gap-3 !px-[35px]">
                   <Volume1 className='h-4 w-4 fill-foreground' />
                   <Slider
                     value={[volume]}
