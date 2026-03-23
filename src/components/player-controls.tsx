@@ -1,24 +1,13 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { 
-  Pause, 
-  Play, 
-  Volume, 
-  Volume1, 
-  Volume2, 
-  VolumeX, 
-  SkipBack, 
-  SkipForward 
-} from 'lucide-react';
+import { Pause, Play, Volume, Volume1, Volume2, VolumeX, SkipBack, SkipForward } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
-import { 
-  Card,
-  CardContent,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { PlayerControlsProps } from '@/types';
+import { TextMarquee } from '@/components/text-marquee';
 
 const PlayerControls: React.FC<PlayerControlsProps> = ({
   isPlaying,
@@ -96,24 +85,12 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
   };
 
   const VolumeIcon = () => {
-    const iconClass = "h-4 w-4";
+    const iconClass = "h-4 w-4 fill-foreground";
     if (volume === 0) return <VolumeX className={iconClass} />;
     if (volume > 50) return <Volume2 className={iconClass} />;
     if (volume > 0) return <Volume1 className={iconClass} />;
     return <Volume className={iconClass} />;
   };
-
-  const positionClass = 
-    settings.playerposition === "left"
-      ? "left-0"
-      : settings.playerposition === "right"
-      ? "right-0"
-      : "left-1/2 transform -translate-x-1/2";
-
-  const roundedClass = 
-    isMobile || settings.fullplayer 
-      ? "rounded-t-lg" 
-      : "rounded-lg";
 
   const shouldShowControls = isMobile 
     ? mobileControlsVisible && settings.showplayercontrol
@@ -150,95 +127,92 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
             ease: [0.19, 1, 0.22, 1] 
           },
         }}
-        className={`fixed z-50 ${positionClass} ${roundedClass} shadow-lg ${isMobile && shouldShowControls ? 'backdrop-blur-sm' : ''}`}
+        className={`fixed z-50 ${settings.playerposition === "left" ? "left-0" : settings.playerposition === "right" ? "right-0" : "left-1/2 transform -translate-x-1/2"} ${isMobile || settings.fullplayer ? "rounded-t-lg" : "rounded-lg"} ${isMobile ? undefined : 'shadow-lg backdrop-blur-sm'}`}
       >
         <Card 
-          className="shadow-none bg-background/40 dark:bg-background/30 border border-white/10 dark:border-white/5 rounded-t-2xl"
+          className={`shadow-none ${isMobile ? 'bg-transparent border-none' : 'bg-background/40 dark:bg-background/20 border rounded-2xl'} border-white/10 dark:border-white/10`}
           onClick={() => {
             if (isMobile && onMobileControlsToggle) {
               onMobileControlsToggle();
             }
           }}
         >
-          <CardContent className="p-5">
+          <CardContent className={isMobile ? "px-0 !py-[40px]" : "p-5"}>
             {isMobile ? (
-              <div className="flex flex-col space-y-5">
+              <div className="flex flex-col space-y-6">
                 {/* Track Info */}
-                <div className="space-y-2 text-center">
-                  <p className="font</div>-semibold text-base overflow-hidden text-nowrap text-ellipsis text-foreground drop-shadow-sm">
-                    {trackName.length > 35 ? `${trackName.slice(0, 35)}...` : trackName}
-                  </p>
-                  <p className="text-sm overflow-hidden text-nowrap text-ellipsis text-foreground/80 drop-shadow-md">
-                    {artistName.length > 35 ? `${artistName.slice(0, 35)}...` : artistName}
-                    {albumName && ` • ${albumName.length > 30 ? `${albumName.slice(0, 30)}...` : albumName}`}
-                  </p>
+                <div className="w-full px-[5px] space-y-1">
+                  <TextMarquee
+                    text={trackName}
+                    className="font-semibold text-base text-foreground"
+                  />
+                  <TextMarquee
+                    text={artistName}
+                    className="text-sm text-foreground/80"
+                  />
                 </div>
 
                 {/* Progress Bar */}
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-medium min-w-10 text-center text-foreground/90 drop-shadow-sm">
-                    {formatTime(currentTime)}
-                  </span>
+                <div className="space-y-3 !px-[30px]">
                   <Slider
                     value={[currentTime]}
                     max={duration}
                     step={0.1}
-                    className="flex-1 [&_.slider-track]:bg-foreground/20 [&_.slider-range]:bg-primary [&_.slider-thumb]:bg-primary [&_.slider-thumb]:shadow-lg [&_.slider-thumb]:border-2 [&_.slider-thumb]:border-background"
+                    className="w-full [&_.slider-track]:bg-foreground/15 [&_.slider-range]:bg-foreground dark:[&_.slider-range]:bg-primary/80 [&_.slider-thumb]:opacity-0"
                     onValueChange={handleProgressChangeWithToggle}
                   />
-                  <span className="text-xs font-medium min-w-10 text-center text-foreground/90 drop-shadow-sm">
-                    {formatTime(duration)}
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-medium text-foreground/60 min-w-[36px] text-center">
+                      {formatTime(currentTime)}
+                    </span>
+                    <span className="text-[11px] font-medium text-foreground/60 min-w-[36px] text-center">
+                      {formatTime(duration)}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Playback Controls */}
-                <div className="flex justify-center items-center gap-6 py-3">
+                <div className="flex justify-center items-center gap-6 !px-[30px]">
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={handleSkipBackWithToggle}
-                    className="h-12 w-12 rounded-full hover:bg-foreground/15 transition-all duration-200 text-foreground/90 hover:text-foreground drop-shadow-sm"
+                    className="h-12 w-12 rounded-full hover:bg-foreground/15 active:scale-90 transition-all duration-200 text-foreground/90 hover:text-foreground"
                   >
-                    <SkipBack className="h-6 w-6" />
+                    <SkipBack className="fill-foreground !h-6 !w-6" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={handlePlayPause}
-                    className="h-16 w-16 rounded-full hover:bg-foreground/15 hover:scale-105 transition-all duration-200 text-primary drop-shadow-lg"
+                    className="h-16 w-16 rounded-full hover:bg-foreground/15 active:scale-90 transition-all duration-200 text-primary"
                   >
                     {isPlaying ? (
-                      <Pause className="h-10 w-10" />
+                      <Pause className="fill-foreground !h-8 !w-8" />
                     ) : (
-                      <Play className="h-10 w-10 ml-1" />
+                      <Play className="fill-foreground !h-8 !w-8" />
                     )}
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={handleSkipForwardWithToggle}
-                    className="h-12 w-12 rounded-full hover:bg-foreground/15 transition-all duration-200 text-foreground/90 hover:text-foreground drop-shadow-sm"
+                    className="h-12 w-12 rounded-full hover:bg-foreground/15 active:scale-90 transition-all duration-200 text-foreground/90 hover:text-foreground"
                   >
-                    <SkipForward className="h-6 w-6" />
+                    <SkipForward className="fill-foreground !h-6 !w-6" />
                   </Button>
                 </div>
 
                 {/* Volume Control */}
-                <div className="flex items-center gap-3 pt-2 px-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={toggleMuteWithToggle}
-                    className="h-9 w-9 rounded-full hover:bg-foreground/15 transition-all duration-200 text-foreground/90 hover:text-foreground drop-shadow-sm"
-                  >
-                    <VolumeIcon />
-                  </Button>
+                <div className="flex items-center gap-3 !px-[35px]">
+                  <Volume1 className='h-4 w-4 fill-foreground' />
                   <Slider
                     value={[volume]}
                     max={100}
-                    className="flex-1 [&_.slider-track]:bg-foreground/20 [&_.slider-range]:bg-primary [&_.slider-thumb]:bg-primary [&_.slider-thumb]:shadow-md [&_.slider-thumb]:border-2 [&_.slider-thumb]:border-background"
+                    className="flex-1 [&_.slider-track]:bg-foreground/15 [&_.slider-range]:bg-foreground dark:[&_.slider-range]:bg-primary/80 [&_.slider-thumb]:opacity-0"
                     onValueChange={onLocalVolumeChange}
                   />
+                  <Volume2 className='h-4 w-4 fill-foreground' />
                 </div>
               </div>
             ) : (
@@ -252,7 +226,7 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
                     value={[currentTime]}
                     max={duration}
                     step={0.1}
-                    className="flex-1 [&_.slider-track]:bg-foreground/20 [&_.slider-range]:bg-primary [&_.slider-thumb]:bg-primary [&_.slider-thumb]:shadow-lg [&_.slider-thumb]:border-2 [&_.slider-thumb]:border-background"
+                    className="flex-1 [&_.slider-track]:bg-foreground/15 [&_.slider-range]:bg-foreground dark:[&_.slider-range]:bg-primary/80 [&_.slider-thumb]:bg-primary"
                     onValueChange={handleProgressChangeWithToggle}
                   />
                   <span className="text-xs font-medium min-w-12 text-center text-foreground/90 drop-shadow-sm">
@@ -271,7 +245,7 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
                         onClick={handleSkipBackWithToggle}
                         className="h-10 w-10 rounded-full hover:bg-foreground/15 transition-all duration-200 text-foreground/90 hover:text-foreground drop-shadow-sm"
                       >
-                        <SkipBack className="h-5 w-5" />
+                        <SkipBack className="fill-foreground" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -280,9 +254,9 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
                         className="h-12 w-12 rounded-full hover:bg-foreground/15 hover:scale-105 transition-all duration-200 text-primary drop-shadow-lg"
                       >
                         {isPlaying ? (
-                          <Pause className="h-7 w-7" />
+                          <Pause className="fill-foreground" />
                         ) : (
-                          <Play className="h-7 w-7 ml-0.5" />
+                          <Play className="fill-foreground" />
                         )}
                       </Button>
                       <Button
@@ -291,7 +265,7 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
                         onClick={handleSkipForwardWithToggle}
                         className="h-10 w-10 rounded-full hover:bg-foreground/15 transition-all duration-200 text-foreground/90 hover:text-foreground drop-shadow-sm"
                       >
-                        <SkipForward className="h-5 w-5" />
+                        <SkipForward className="fill-foreground" />
                       </Button>
                     </div>
 
@@ -308,7 +282,7 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
                       <Slider
                         value={[volume]}
                         max={100}
-                        className="w-28 [&_.slider-track]:bg-foreground/20 [&_.slider-range]:bg-primary [&_.slider-thumb]:bg-primary [&_.slider-thumb]:shadow-md [&_.slider-thumb]:border-2 [&_.slider-thumb]:border-background"
+                        className="w-28 [&_.slider-track]:bg-foreground/15 [&_.slider-range]:bg-foreground dark:[&_.slider-range]:bg-primary/80 [&_.slider-thumb]:bg-primary"
                         onValueChange={onLocalVolumeChange}
                       />
                     </div>
@@ -339,7 +313,7 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
       
       {isMobile && !mobileControlsVisible && (
         <div
-          className="fixed bottom-0 left-0 right-0 h-32 bg-transparent z-[9999]"
+          className="fixed bottom-0 left-0 right-0 h-40 bg-transparent z-[9999]"
           onClick={onMobileControlsToggle}
         />
       )}

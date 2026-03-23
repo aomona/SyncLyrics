@@ -37,6 +37,19 @@ export interface TTMLLine {
   timing?: 'Line' | 'Word';
   groupEnd?: number;
   originalEnd?: number;
+  itunesKey?: string;
+  pronunciationWords?: TTMLWord[];
+  pronunciationText?: string;
+  backgroundPronunciationWords?: TTMLWord[];
+  backgroundPronunciationText?: string;
+  translationWords1?: TTMLWord[];
+  translationText1?: string;
+  translationWords2?: TTMLWord[];
+  translationText2?: string;
+  backgroundTranslationWords1?: TTMLWord[];
+  backgroundTranslationText1?: string;
+  backgroundTranslationWords2?: TTMLWord[];
+  backgroundTranslationText2?: string;
 }
 
 export interface TTMLDiv {
@@ -72,6 +85,9 @@ export interface WordTimingKaraokeLyricLineProps {
   progressDirection: 'rtl' | 'ltr' | 'btt' | 'ttb';
   isActive: boolean;
   isPast?: boolean;
+  showPronunciation?: boolean;
+  activeColor?: string;
+  inactiveColor?: string;
 }
 
 export interface BackgroundWordTimingLyricLineProps {
@@ -80,24 +96,32 @@ export interface BackgroundWordTimingLyricLineProps {
   resolvedTheme: string;
   progressDirection: 'rtl' | 'ltr' | 'btt' | 'ttb';
   fontSize: 'small' | 'medium' | 'large';
+  pronunciationWords?: TTMLWord[];
+  showPronunciation?: boolean;
+  activeColor?: string;
+  inactiveColor?: string;
 }
 
 export interface Settings {
   showplayercontrol: boolean;
+  autoHideMobileControls: boolean;
   fullplayer: boolean;
   fontSize: 'small' | 'medium' | 'large';
   lyricposition: 'left' | 'center' | 'right';
   backgroundblur: number;
   backgroundtransparency: number;
+  youtubeFullDisplay: boolean;
+  youtubeFullPositionX: number;
+  youtubeFullPositionY: number;
   theme: 'system' | 'dark' | 'light';
   playerposition: 'left' | 'center' | 'right';
   volume: number;
   lyricOffset: number;
+  shortLineGroupThreshold: number;
   useKaraokeLyric: boolean;
   lyricProgressDirection: 'rtl' | 'ltr' | 'btt' | 'ttb';
   CustomEasing: string;
   scrollPositionOffset: number;
-  useTTML?: boolean;
   useWordTiming: boolean;
   useAMLL?: boolean;
   amllEnableSpring?: boolean;
@@ -109,6 +133,12 @@ export interface Settings {
     tension?: number;
     friction?: number;
   };
+  showPronunciation?: boolean;
+  showTranslation?: boolean;
+  useCustomColors: boolean;
+  activeLyricColor: string;
+  inactiveLyricColor: string;
+  interludeDotsColor: string;
 }
 
 export interface PlayerLyricsProps {
@@ -127,6 +157,7 @@ export interface PlayerLyricsProps {
     duration: number
   ) => void;
   ttmlData?: TTMLData;
+  mobileControlsVisible?: boolean;
 }
 
 export interface KaraokeLyricLineProps {
@@ -135,6 +166,8 @@ export interface KaraokeLyricLineProps {
   resolvedTheme: string;
   isActive: boolean;
   progressDirection: 'rtl' | 'ltr' | 'btt' | 'ttb';
+  activeColor?: string;
+  inactiveColor?: string;
 }
 
 export interface PlayerProps {
@@ -233,4 +266,87 @@ export interface AMLLLyricsProps {
   isMobile: boolean;
   isPlaying: boolean;
   resolvedTheme: string;
+  mobileControlsVisible?: boolean;
 }
+
+export interface PlayerState {
+  mode: "lrc" | "ttml";
+  lyricsData: LyricLine[];
+  audioUrl: string;
+  selectedTrack: SearchResult;
+  ttmlData?: TTMLData | null;
+}
+
+export interface PlaybackHistoryEntry {
+  id: string;
+  mode: PlayerState["mode"];
+  playerState: PlayerState;
+  youtubeUrl: string;
+  videoId: string;
+  trackName: string;
+  artistName: string;
+  firstLine: string;
+  lyricsSignature: string;
+  lyricsSnapshot: string;
+  lyricTiming: 'line' | 'word';
+  createdAt: string;
+  backgroundLyricsSnapshot?: string;
+}
+
+export type SimpleKaraokeProps = {
+  text: string;
+  progressPercentage: number;
+  resolvedTheme: string;
+  isActive: boolean;
+  progressDirection: 'ltr' | 'rtl' | 'ttb' | 'btt';
+  activeColor?: string;
+  inactiveColor?: string;
+};
+
+export type TranslationWordTimingLyricLineProps = BackgroundWordTimingLyricLineProps & {
+  karaokeEnabled?: boolean;
+  persistActive?: boolean;
+  disableGradient?: boolean;
+};
+
+export type RgbaColor = {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+};
+
+export type ColorWithAlphaPickerProps = {
+  label: string;
+  value: string;
+  onChange: (newColor: string) => void;
+};
+
+export type ColorPickerProps = {
+  label: string;
+  value: string;
+  onChange: (newColor: string) => void;
+};
+
+export type HistoryDisplayItem = {
+  entry: PlaybackHistoryEntry;
+  displayLine: string;
+  highlightRange: { start: number; end: number } | null;
+  trackHighlightRange: { start: number; end: number } | null;
+  artistHighlightRange: { start: number; end: number } | null;
+};
+
+export interface SimpleLyricLineProps {
+  text: string;
+  isActive?: boolean;
+  color?: string;
+  activeColor?: string;
+  inactiveColor?: string;
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+export type TextMarqueeProps = {
+  text: string;
+  className?: string;
+};

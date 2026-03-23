@@ -65,6 +65,162 @@ export function parseTTML(xmlContent: string): TTMLData | null {
         type: agent.getAttribute('type') || ''
       };
     });
+
+    const ITUNES_NS = 'http://music.apple.com/lyric-ttml-internal';
+
+    const addSpaceBetweenLanguages = (wordList: TTMLWord[]): string => {
+      let result = '';
+      let prevIsLatin = false;
+      for (let i = 0; i < wordList.length; i++) {
+        const text = wordList[i].text || '';
+        const isLatin = /^[a-zA-Z0-9]+$/.test(text.trim());
+        if (i > 0) {
+          if ((prevIsLatin && isLatin) || (prevIsLatin && !isLatin) || (!prevIsLatin && isLatin)) {
+            result += ' ';
+          }
+        }
+        result += text;
+        prevIsLatin = isLatin;
+      }
+      return result.trim();
+    };
+
+    const collectTranslitWords = (textEl: Element): { main: TTMLWord[]; bg: TTMLWord[] } => {
+      const spans = Array.from(textEl.getElementsByTagName('span'));
+      const main: TTMLWord[] = [];
+      const bg: TTMLWord[] = [];
+      spans.forEach(sp => {
+        let isBg = false;
+        let node: Node | null = sp;
+        while (node && node instanceof Element && node !== textEl) {
+          const role = (node as Element).getAttribute('ttm:role');
+          if (role === 'x-bg') { isBg = true; break; }
+          node = (node as Element).parentNode as (Node | null);
+        }
+        let txt = (sp.textContent || '').trim();
+        if (!txt) return;
+        if (isBg) {
+          txt = txt.replace(/[()（）]/g, '');
+        }
+        const begin = parseTime(sp.getAttribute('begin') || '0');
+        const end = parseTime(sp.getAttribute('end') || '0');
+        const word = { begin, end, text: txt };
+        (isBg ? bg : main).push(word);
+      });
+      return { main, bg };
+    };
+
+    const collectTranslitPlainTextByRole = (el: Element): { main: string; bg: string } => {
+      let main = '';
+      let bg = '';
+      const walk = (node: Node, inBg: boolean) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const t = (node.textContent || '');
+          if (t.trim().length === 0) return;
+          if (inBg) {
+            bg += t.replace(/[()（）]/g, '');
+          } else {
+            main += t;
+          }
+          return;
+        }
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const e = node as Element;
+          const role = e.getAttribute('ttm:role');
+          const nextInBg = inBg || role === 'x-bg';
+          e.childNodes.forEach(child => walk(child, nextInBg));
+        }
+      };
+      walk(el, false);
+      return { main: main.trim(), bg: bg.trim() };
+    };
+
+    const translitMap = new Map<string, TTMLWord[]>();
+    const translitTextMap = new Map<string, string>();
+    const translitBGMap = new Map<string, TTMLWord[]>();
+    const translitBGTextMap = new Map<string, string>();
+    const translationsMap = new Map<string, {
+      lang: string;
+      mainWords: TTMLWord[];
+      mainText: string;
+      backgroundWords: TTMLWord[];
+      backgroundText: string;
+    }[]>();
+
+    try {
+      const iTunesNode =
+        xmlDoc.getElementsByTagNameNS(ITUNES_NS, 'iTunesMetadata')[0] ||
+        (xmlDoc.querySelector('iTunesMetadata') as Element | undefined);
+
+      if (iTunesNode) {
+        const translitsParent = iTunesNode.getElementsByTagNameNS(ITUNES_NS, 'transliterations')[0];
+        if (translitsParent) {
+          const translits = Array.from(translitsParent.getElementsByTagNameNS(ITUNES_NS, 'transliteration'));
+          translits.forEach(tr => {
+            const texts = Array.from(tr.getElementsByTagNameNS(ITUNES_NS, 'text'));
+            texts.forEach(t => {
+              const forKey = t.getAttribute('for') || '';
+              if (!forKey) return;
+
+              const { main, bg } = collectTranslitWords(t);
+              const plainByRole = collectTranslitPlainTextByRole(t);
+
+              if (main.length > 0) {
+                if (!translitMap.has(forKey)) {
+                  translitMap.set(forKey, main);
+                  translitTextMap.set(forKey, addSpaceBetweenLanguages(main));
+                }
+              } else if (plainByRole.main) {
+                if (!translitTextMap.has(forKey)) {
+                  translitTextMap.set(forKey, plainByRole.main);
+                }
+              }
+
+              if (bg.length > 0) {
+                if (!translitBGMap.has(forKey)) {
+                  translitBGMap.set(forKey, bg);
+                  translitBGTextMap.set(forKey, addSpaceBetweenLanguages(bg));
+                }
+              } else if (plainByRole.bg) {
+                if (!translitBGTextMap.has(forKey)) {
+                  translitBGTextMap.set(forKey, plainByRole.bg);
+                }
+              }
+            });
+          });
+        }
+
+        const translationsParent = iTunesNode.getElementsByTagNameNS(ITUNES_NS, 'translations')[0];
+        if (translationsParent) {
+          const texts = Array.from(translationsParent.getElementsByTagNameNS(ITUNES_NS, 'text'));
+          texts.forEach(t => {
+            const forKey = t.getAttribute('for') || '';
+            const lang = t.getAttribute('xml:lang') || '';
+            if (!forKey) return;
+            const { main: mainWords, bg: backgroundWords } = collectTranslitWords(t);
+            const plainByRole = collectTranslitPlainTextByRole(t);
+            const fallbackText = (t.textContent || '').trim();
+            const mainText = mainWords.length > 0
+              ? addSpaceBetweenLanguages(mainWords)
+              : (plainByRole.main || fallbackText);
+            const backgroundText = backgroundWords.length > 0
+              ? addSpaceBetweenLanguages(backgroundWords)
+              : plainByRole.bg;
+            const arr = translationsMap.get(forKey) || [];
+            arr.push({
+              lang,
+              mainWords,
+              mainText: mainText.trim(),
+              backgroundWords,
+              backgroundText: backgroundText.trim(),
+            });
+            translationsMap.set(forKey, arr);
+          });
+        }
+      }
+    } catch {
+      return null;
+    }
     
     const divs = Array.from(xmlDoc.querySelectorAll('body div')).map(div => {
       const begin = parseTime(div.getAttribute('begin') || '0');
@@ -73,6 +229,7 @@ export function parseTTML(xmlContent: string): TTMLData | null {
         const pBegin = parseTime(p.getAttribute('begin') || '0');
         const pEnd = parseTime(p.getAttribute('end') || '0');
         const agent = p.getAttribute('ttm:agent') || undefined;
+        const itunesKey = p.getAttribute('itunes:key') || undefined;
         
         const directChildren = Array.from(p.children);
         const firstBgSpanIndex = directChildren.findIndex(
@@ -177,39 +334,20 @@ export function parseTTML(xmlContent: string): TTMLData | null {
         const directSpans = Array.from(p.children).filter(
           el => el.tagName.toLowerCase() === 'span'
         );
+
+        const joinWords = (list: TTMLWord[], isBackground = false): string => {
+          const normalized = isBackground
+            ? list.map(w => ({ ...w, text: (w.text || '').replace(/[()（）]/g, '') }))
+            : list;
+          return addSpaceBetweenLanguages(normalized);
+        };
         
         if (directSpans.length > 0) {
           const { words, backgroundWords } = processSpans(p);
-          const addSpaceBetweenLanguages = (wordList: TTMLWord[], isBackground = false): string => {
-            let result = '';
-            let prevIsLatin = false;
-            
-            for (let i = 0; i < wordList.length; i++) {
-              const word = wordList[i];
-              let text = word.text || '';
-              
-              if (isBackground) {
-                text = text.replace(/[()（）]/g, '');
-              }
-              
-              const isLatin = /^[a-zA-Z0-9]+$/.test(text.trim());
+          const text = joinWords(words);
+          const backgroundText = backgroundWords.length > 0 ? joinWords(backgroundWords, true) : undefined;
 
-              if (i > 0) {
-                if ((prevIsLatin && isLatin) || (prevIsLatin && !isLatin) || (!prevIsLatin && isLatin)) {
-                  result += ' ';
-                }
-              }
-              
-              result += text;
-              prevIsLatin = isLatin;
-            }
-            return result.trim();
-          };
-          
-          const text = addSpaceBetweenLanguages(words);
-          const backgroundText = backgroundWords.length > 0 ? addSpaceBetweenLanguages(backgroundWords, true) : undefined;
-          
-          return {
+          const lineObj: TTMLLine = {
             begin: pBegin,
             end: pEnd,
             text,
@@ -218,16 +356,121 @@ export function parseTTML(xmlContent: string): TTMLData | null {
             backgroundWords: backgroundWords.length > 0 ? backgroundWords : undefined,
             backgroundText,
             backgroundPosition,
-            timing: 'Word' as const
-          } as TTMLLine;
+            timing: 'Word',
+            itunesKey
+          };
+
+          if (itunesKey) {
+            if (translitMap.has(itunesKey) && (translitMap.get(itunesKey) || []).length > 0) {
+              const pw = translitMap.get(itunesKey)!;
+              lineObj.pronunciationWords = pw;
+              lineObj.pronunciationText = addSpaceBetweenLanguages(pw);
+            } else if (translitTextMap.has(itunesKey)) {
+              lineObj.pronunciationText = translitTextMap.get(itunesKey)!;
+            }
+
+            if (translitBGMap.has(itunesKey) && (translitBGMap.get(itunesKey) || []).length > 0) {
+              const bpw = translitBGMap.get(itunesKey)!;
+              lineObj.backgroundPronunciationWords = bpw;
+              lineObj.backgroundPronunciationText = addSpaceBetweenLanguages(bpw);
+            } else if (translitBGTextMap.has(itunesKey)) {
+              lineObj.backgroundPronunciationText = translitBGTextMap.get(itunesKey)!;
+            }
+          }
+          if (itunesKey && translationsMap.has(itunesKey)) {
+            const arr = translationsMap.get(itunesKey)!;
+            if (arr[0]) {
+              if (arr[0].mainWords.length > 0) {
+                lineObj.translationWords1 = arr[0].mainWords;
+              }
+              if (arr[0].mainText) {
+                lineObj.translationText1 = arr[0].mainText;
+              }
+              if (arr[0].backgroundWords.length > 0) {
+                lineObj.backgroundTranslationWords1 = arr[0].backgroundWords;
+              }
+              if (arr[0].backgroundText) {
+                lineObj.backgroundTranslationText1 = arr[0].backgroundText;
+              }
+            }
+            if (arr[1]) {
+              if (arr[1].mainWords.length > 0) {
+                lineObj.translationWords2 = arr[1].mainWords;
+              }
+              if (arr[1].mainText) {
+                lineObj.translationText2 = arr[1].mainText;
+              }
+              if (arr[1].backgroundWords.length > 0) {
+                lineObj.backgroundTranslationWords2 = arr[1].backgroundWords;
+              }
+              if (arr[1].backgroundText) {
+                lineObj.backgroundTranslationText2 = arr[1].backgroundText;
+              }
+            }
+          }
+
+          return lineObj as TTMLLine;
         } else {
-          return {
+          const baseText = p.textContent || '';
+          const lineObj: TTMLLine = {
             begin: pBegin,
             end: pEnd,
-            text: p.textContent || '',
+            text: baseText,
             agent,
-            timing: 'Line' as const
-          } as TTMLLine;
+            timing: 'Line',
+            itunesKey
+          };
+
+          if (itunesKey) {
+            if (translitMap.has(itunesKey) && (translitMap.get(itunesKey) || []).length > 0) {
+              const pw = translitMap.get(itunesKey)!;
+              lineObj.pronunciationWords = pw;
+              lineObj.pronunciationText = addSpaceBetweenLanguages(pw);
+            } else if (translitTextMap.has(itunesKey)) {
+              lineObj.pronunciationText = translitTextMap.get(itunesKey)!;
+            }
+
+            if (translitBGMap.has(itunesKey) && (translitBGMap.get(itunesKey) || []).length > 0) {
+              const bpw = translitBGMap.get(itunesKey)!;
+              lineObj.backgroundPronunciationWords = bpw;
+              lineObj.backgroundPronunciationText = addSpaceBetweenLanguages(bpw);
+            } else if (translitBGTextMap.has(itunesKey)) {
+              lineObj.backgroundPronunciationText = translitBGTextMap.get(itunesKey)!;
+            }
+          }
+          if (itunesKey && translationsMap.has(itunesKey)) {
+            const arr = translationsMap.get(itunesKey)!;
+            if (arr[0]) {
+              if (arr[0].mainWords.length > 0) {
+                lineObj.translationWords1 = arr[0].mainWords;
+              }
+              if (arr[0].mainText) {
+                lineObj.translationText1 = arr[0].mainText;
+              }
+              if (arr[0].backgroundWords.length > 0) {
+                lineObj.backgroundTranslationWords1 = arr[0].backgroundWords;
+              }
+              if (arr[0].backgroundText) {
+                lineObj.backgroundTranslationText1 = arr[0].backgroundText;
+              }
+            }
+            if (arr[1]) {
+              if (arr[1].mainWords.length > 0) {
+                lineObj.translationWords2 = arr[1].mainWords;
+              }
+              if (arr[1].mainText) {
+                lineObj.translationText2 = arr[1].mainText;
+              }
+              if (arr[1].backgroundWords.length > 0) {
+                lineObj.backgroundTranslationWords2 = arr[1].backgroundWords;
+              }
+              if (arr[1].backgroundText) {
+                lineObj.backgroundTranslationText2 = arr[1].backgroundText;
+              }
+            }
+          }
+
+          return lineObj as TTMLLine;
         }
       });
       

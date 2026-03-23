@@ -7,14 +7,155 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Settings as SettingsIcon, Type, Music, LetterText, Clock, Blend, Palette, Layers, SlidersHorizontal, Expand, MoveHorizontal, MicVocal, ArrowUpWideNarrow, Spline, FileText, Info } from 'lucide-react';
+import { Settings as SettingsIcon, Type, Music, LetterText, Clock, Blend, Palette, Layers, SlidersHorizontal, Expand, MoveHorizontal, MoveVertical, MicVocal, ArrowUpWideNarrow, Spline, FileText, EyeOff } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { SettingsSidebarProps } from '@/types';
 import { Slider } from '@/components/ui/slider';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { SiGithub } from 'react-icons/si';
+import type { RgbaColor, ColorWithAlphaPickerProps, ColorPickerProps } from '@/types';
+import { Alert, AlertDescription } from "@/components/ui/alert"
+
+const clamp = (n: number, min = 0, max = 255) => Math.min(Math.max(n, min), max);
+const formatPositionValue = (value?: number) => Math.min(Math.max(Math.round(value ?? 50), 0), 100);
+const rgbToHex = (r: number, g: number, b: number) => `#${[r, g, b]
+  .map((value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, '0').toUpperCase())
+  .join('')}`;
+
+const parseColorToRgba = (input: string | undefined | null): RgbaColor => {
+  if (!input || typeof input !== 'string') return { r: 0, g: 0, b: 0, a: 1 };
+  const s = input.trim();
+
+  if (s.startsWith('#')) {
+    const h = s.slice(1);
+    if (h.length === 3) {
+      const r = parseInt(h[0] + h[0], 16);
+      const g = parseInt(h[1] + h[1], 16);
+      const b = parseInt(h[2] + h[2], 16);
+      return { r, g, b, a: 1 };
+    }
+    if (h.length === 4) {
+      const r = parseInt(h[0] + h[0], 16);
+      const g = parseInt(h[1] + h[1], 16);
+      const b = parseInt(h[2] + h[2], 16);
+      const a = parseInt(h[3] + h[3], 16) / 255;
+      return { r, g, b, a };
+    }
+    if (h.length === 6) {
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      return { r, g, b, a: 1 };
+    }
+    if (h.length === 8) {
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      const a = parseInt(h.slice(6, 8), 16) / 255;
+      return { r, g, b, a };
+    }
+  }
+
+  const rgbaMatch = s.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+)\s*)?\)$/i);
+  if (rgbaMatch) {
+    const r = clamp(parseFloat(rgbaMatch[1]), 0, 255);
+    const g = clamp(parseFloat(rgbaMatch[2]), 0, 255);
+    const b = clamp(parseFloat(rgbaMatch[3]), 0, 255);
+    const a = rgbaMatch[4] !== undefined ? Math.min(Math.max(parseFloat(rgbaMatch[4]), 0), 1) : 1;
+    return { r, g, b, a };
+  }
+
+  return { r: 0, g: 0, b: 0, a: 1 };
+};
+
+const combineHexAndAlphaToRgba = (hexBase: string, alphaPercent: number): string => {
+  const h = hexBase.startsWith('#') ? hexBase.slice(1) : hexBase;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const a = Math.min(Math.max(alphaPercent, 0), 100) / 100;
+  const aStr = a.toFixed(3).replace(/\.?0+$/, '');
+  return `rgba(${r}, ${g}, ${b}, ${aStr})`;
+};
+
+const ColorWithAlphaPicker: React.FC<ColorWithAlphaPickerProps> = ({ label, value, onChange }) => {
+  const rgba = parseColorToRgba(value);
+  const baseHex = rgbToHex(rgba.r, rgba.g, rgba.b);
+  const alpha = Math.round((rgba.a ?? 1) * 100);
+
+  return (
+    <div className="space-y-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <Input
+        type="color"
+        value={baseHex}
+        onChange={(e) => {
+          onChange(combineHexAndAlphaToRgba(e.target.value, alpha));
+        }}
+      />
+      <div className="pt-1 px-1">
+        <Slider
+          value={[alpha]}
+          min={0}
+          max={100}
+          step={1}
+          onValueChange={(values) => {
+            onChange(combineHexAndAlphaToRgba(baseHex, values[0]));
+          }}
+        />
+        <div className="flex justify-between mt-1">
+          <span className="text-xs text-muted-foreground">透明</span>
+          <span className="text-xs text-muted-foreground">{alpha}%</span>
+          <span className="text-xs text-muted-foreground">不透明</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ColorPicker: React.FC<ColorPickerProps> = ({ label, value, onChange }) => {
+  const rgba = parseColorToRgba(value);
+  const baseHex = rgbToHex(rgba.r, rgba.g, rgba.b);
+
+  return (
+    <div className="space-y-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <Input
+        type="color"
+        value={baseHex}
+        onChange={(e) => {
+          onChange(e.target.value);
+        }}
+      />
+    </div>
+  );
+};
+
+type MobileSettingsNoteProps = React.PropsWithChildren<{ className?: string }>;
+
+const MobileSettingsNote: React.FC<MobileSettingsNoteProps> = ({ children, className }) => (
+  <Alert className={className}>
+    <AlertDescription className="text-xs text-gray-500 dark:text-gray-400">
+      {children}
+    </AlertDescription>
+  </Alert>
+);
+
+type SettingsTooltipProps = React.PropsWithChildren;
+
+const SettingsTooltip: React.FC<SettingsTooltipProps> = ({ children }) => (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full">
+        ?
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent>
+      <p className="max-w-xs">{children}</p>
+    </TooltipContent>
+  </Tooltip>
+);
 
 const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
   showSettings,
@@ -62,15 +203,6 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
             </TabsList>
             
             <TabsContent value="display" className="space-y-4">
-              <Alert variant="default" className="bg-green-100 border-green-500 dark:bg-green-950/50 dark:border-green-600/50 mb-4">
-                <div className="flex items-center gap-2">
-                  <Info className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  <AlertTitle className="text-green-700 dark:text-green-300 font-medium">AMLLの使用を推奨</AlertTitle>
-                </div>
-                <AlertDescription className="text-green-700 dark:text-green-300 mt-1 pl-7">
-                  標準機能よりも優れた同期表示が可能です！
-                </AlertDescription>
-              </Alert>
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-md">レイアウトと表示</CardTitle>
@@ -82,14 +214,9 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                         <Type className="h-4 w-4" />
                         フォントサイズ
                         {settings.useAMLL && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full">?</Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="max-w-xs">AMLLがオンの場合は使用できません（自動調整されます）</p>
-                            </TooltipContent>
-                          </Tooltip>
+                          <SettingsTooltip>
+                            AMLLがオンの場合は使用できません（自動調整されます）
+                          </SettingsTooltip>
                         )}
                       </Label>
                       <div className="grid grid-cols-3 gap-1">
@@ -152,36 +279,78 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                       step="0.1"
                       value={settings.lyricOffset}
                       onChange={(e) => {
-                        const newOffset = Number(e.target.value);
-                        handleSettingChange('lyricOffset', newOffset);
+                        handleSettingChange('lyricOffset', Number(e.target.value));
                       }}
                       className="mt-1"
                     />
                     <div className="mt-2">
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        プラス値: 歌詞が早く表示
+                        プラス値: 早く表示
                       </p>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        マイナス値: 歌詞が遅く表示
+                        マイナス値: 遅く表示
                       </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="shortLineGroupThreshold" className="text-sm font-medium flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      歌詞をグループ化する時間（秒）
+                      <SettingsTooltip>
+                        設定された秒数未満の行は次の行とグループ化します。{settings.useAMLL && "AMLLがオンの場合は使用できません"}
+                      </SettingsTooltip>
+                    </Label>
+                    <div className="pt-4 px-2">
+                      <Slider
+                        id="shortLineGroupThreshold"
+                        value={[Math.min(5, Math.max(0, settings.shortLineGroupThreshold))]}
+                        min={0}
+                        max={5}
+                        step={0.1}
+                        onValueChange={(values) => {
+                          handleSettingChange(
+                            'shortLineGroupThreshold',
+                            Math.round(Math.min(5, Math.max(0, values[0] ?? 0)) * 10) / 10
+                          );
+                        }}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-2">
+                      <span className="text-xs text-muted-foreground">0秒</span>
+                      <span className="text-xs text-muted-foreground">
+                        {Math.min(5, Math.max(0, settings.shortLineGroupThreshold)).toFixed(1)}秒
+                      </span>
+                      <span className="text-xs text-muted-foreground">5秒</span>
                     </div>
                   </div>
 
                   <Separator />
 
                   <div className="flex items-center justify-between">
+                    <Label htmlFor="useWordTiming" className="text-sm font-medium flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      単語単位の同期を使用
+                      <SettingsTooltip>
+                        TTMLを使用していて、単語ごとに同期されている場合に<strong>カラオケ風歌詞</strong>と併用することで使用できます。{settings.useAMLL && "AMLLがオンの場合は使用できません"}
+                      </SettingsTooltip>
+                    </Label>
+                    <Switch
+                      id="useWordTiming"
+                      checked={settings.useWordTiming}
+                      onCheckedChange={(checked) => handleSettingChange('useWordTiming', checked)}
+                      disabled={settings.useAMLL}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
                     <Label htmlFor="useKaraokeLyric" className="text-sm font-medium flex items-center gap-2">
                       <MicVocal className="h-4 w-4" />
                       カラオケ風歌詞
                       {settings.useAMLL && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full">?</Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="max-w-xs">AMLLがオンの場合は使用できません</p>
-                          </TooltipContent>
-                        </Tooltip>
+                        <SettingsTooltip>
+                          AMLLがオンの場合は使用できません
+                        </SettingsTooltip>
                       )}
                     </Label>
                     <Switch
@@ -197,17 +366,10 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                       <ArrowUpWideNarrow className="h-4 w-4" />
                       カラオケ風歌詞進行方向
                       {(!settings.useKaraokeLyric || settings.useAMLL) && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full">?</Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                        <p className="max-w-xs">
+                        <SettingsTooltip>
                           {!settings.useKaraokeLyric && "カラオケ風歌詞がオフの場合は使用できません"}
                           {settings.useAMLL && "AMLLがオンの場合は使用できません"}
-                        </p>
-                        </TooltipContent>
-                      </Tooltip>
+                        </SettingsTooltip>
                       )}
                     </Label>
                     <div className="grid grid-cols-4 gap-1">
@@ -231,46 +393,37 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                     </div>
                   </div>
 
+                  <Separator />
+
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="useTTML" className="text-sm font-medium flex items-center gap-2">
-                      <FileText className="h-4 w-4" />
-                      TTML形式を使用
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full">?</Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">TTML形式の歌詞データが利用可能な場合に使用します</p>
-                        </TooltipContent>
-                      </Tooltip>
+                    <Label htmlFor="showPronunciation" className="text-sm font-medium flex items-center gap-2">
+                      <Type className="h-4 w-4" />
+                      発音を表示
+                      <SettingsTooltip>
+                        TTMLを使用していて、発音に対応している場合に使用することが出来ます。{settings.useAMLL && "AMLLがオンの場合は使用できません"}
+                      </SettingsTooltip>
                     </Label>
                     <Switch
-                      id="useTTML"
-                      checked={settings.useTTML}
-                      onCheckedChange={(checked) => handleSettingChange('useTTML', checked)}
+                      id="showPronunciation"
+                      checked={settings.showPronunciation ?? false}
+                      onCheckedChange={(checked) => handleSettingChange('showPronunciation', checked)}
+                      disabled={settings.useAMLL}
                     />
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="useWordTiming" className="text-sm font-medium flex items-center gap-2">
-                      <FileText className="h-4 w-4" />
-                      単語単位の同期を使用
-                      {!settings.useTTML && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full">?</Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="max-w-xs">TTML形式がオフの場合は使用できません</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                      </Label>
+                    <Label htmlFor="showTranslation" className="text-sm font-medium flex items-center gap-2">
+                      <Layers className="h-4 w-4" />
+                      翻訳を表示
+                      <SettingsTooltip>
+                        TTMLを使用していて、翻訳に対応している場合に使用することが出来ます。{settings.useAMLL && "AMLLがオンの場合は使用できません"}
+                      </SettingsTooltip>
+                    </Label>
                     <Switch
-                      id="useWordTiming"
-                      checked={settings.useWordTiming}
-                      onCheckedChange={(checked) => handleSettingChange('useWordTiming', checked)}
-                      disabled={!settings.useTTML}
+                      id="showTranslation"
+                      checked={settings.showTranslation ?? false}
+                      onCheckedChange={(checked) => handleSettingChange('showTranslation', checked)}
+                      disabled={settings.useAMLL}
                     />
                   </div>
 
@@ -280,38 +433,22 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                     <Label htmlFor="useAMLL" className="text-sm font-medium flex items-center gap-2">
                       <Music className="h-4 w-4" />
                       AMLLを使用
-                      {!settings.useTTML && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full">?</Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="max-w-xs">TTML形式がオフの場合は使用できません</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
                     </Label>
                     <Switch
                       id="useAMLL"
                       checked={settings.useAMLL}
                       onCheckedChange={(checked) => handleSettingChange('useAMLL', checked)}
-                      disabled={!settings.useTTML}
                     />
                   </div>
 
                   <div className="flex items-center justify-between">
                     <Label htmlFor="amllHidePassedLines" className="text-sm font-medium flex items-center gap-2">
                       <Layers className="h-4 w-4" />
-                      過去の歌詞行を非表示
+                      過去の歌詞を非表示
                       {!settings.useAMLL && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full">?</Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="max-w-xs">AMLLがオフの場合は使用できません</p>
-                          </TooltipContent>
-                        </Tooltip>
+                        <SettingsTooltip>
+                          AMLLがオフの場合は使用できません
+                        </SettingsTooltip>
                       )}
                     </Label>
                     <Switch
@@ -340,14 +477,9 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                     <Label htmlFor="scrollPositionOffset" className="text-sm font-medium flex items-center gap-2">
                       <MoveHorizontal className="h-4 w-4 rotate-90" />
                       歌詞表示位置（上下）
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full">?</Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">画面上での歌詞の垂直位置を調整します</p>
-                        </TooltipContent>
-                      </Tooltip>
+                      <SettingsTooltip>
+                        画面上での歌詞の垂直位置を調整します
+                      </SettingsTooltip>
                     </Label>
                     <div className="pt-4 px-2">
                       <Slider
@@ -365,6 +497,63 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                       <span className="text-sm text-muted-foreground">下部</span>
                     </div>
                   </div>
+
+                  <Separator />
+
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="useCustomColors" className="text-sm font-medium flex items-center gap-2">
+                      <Palette className="h-4 w-4" />
+                      カスタムカラーを使用
+                      {settings.useAMLL && (
+                        <SettingsTooltip>
+                          AMLLがオンの場合は使用できません
+                        </SettingsTooltip>
+                      )}
+                    </Label>
+                    <Switch
+                      id="useCustomColors"
+                      checked={settings.useCustomColors}
+                      onCheckedChange={(checked) => handleSettingChange('useCustomColors', checked)}
+                      disabled={settings.useAMLL}
+                    />
+                  </div>
+
+                  {settings.useCustomColors && (
+                    <>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium flex items-center gap-2">
+                          <Palette className="h-4 w-4" />
+                          歌詞カラー
+                        </Label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <ColorWithAlphaPicker
+                            label="アクティブな歌詞"
+                            value={settings.activeLyricColor}
+                            onChange={(v) => handleSettingChange('activeLyricColor', v)}
+                          />
+                          <ColorWithAlphaPicker
+                            label="非アクティブな歌詞"
+                            value={settings.inactiveLyricColor}
+                            onChange={(v) => handleSettingChange('inactiveLyricColor', v)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium flex items-center gap-2">
+                          <Palette className="h-4 w-4" />
+                          間奏の色
+                        </Label>
+                        <div className="grid grid-cols-1 gap-3">
+                          <ColorPicker
+                            label=""
+                            value={settings.interludeDotsColor}
+                            onChange={(v) => handleSettingChange('interludeDotsColor', v)}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
@@ -384,7 +573,7 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                         defaultValue={[settings.backgroundblur]}
                         min={0}
                         max={20}
-                        step={1}
+                        step={0.1}
                         onValueChange={(values) => handleSettingChange('backgroundblur', values[0])}
                       />
                     </div>
@@ -412,10 +601,83 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                       />
                     </div>
                     <div className="flex justify-between mt-2">
-                      <span className="text-xs text-muted-foreground">不透明</span>
                       <span className="text-xs text-muted-foreground">透明</span>
+                      <span className="text-xs text-muted-foreground">不透明</span>
                     </div>
                   </div>
+
+                  <Separator />
+
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="youtubeFullDisplay" className="text-sm font-medium flex items-center gap-2">
+                      <Expand className="h-4 w-4" />
+                      YouTube画面をフル表示
+                    </Label>
+                    <Switch
+                      id="youtubeFullDisplay"
+                      checked={settings.youtubeFullDisplay}
+                      onCheckedChange={(checked) => handleSettingChange('youtubeFullDisplay', checked)}
+                    />
+                  </div>
+
+                  {settings.youtubeFullDisplay && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="youtubeFullPositionX" className="text-sm font-medium flex items-center gap-2">
+                          <MoveHorizontal className="h-4 w-4" />
+                          YouTube表示位置（左右）
+                        </Label>
+                        <div className="pt-4 px-2">
+                          <Slider
+                            id="youtubeFullPositionX"
+                            value={[settings.youtubeFullPositionX ?? 50]}
+                            min={0}
+                            max={100}
+                            step={1}
+                            onValueChange={(values) =>
+                              handleSettingChange('youtubeFullPositionX', Math.round(values[0]))
+                            }
+                          />
+                        </div>
+                        <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                          <span>左</span>
+                          <span>{formatPositionValue(settings.youtubeFullPositionX)}</span>
+                          <span>右</span>
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      <div className="space-y-2">
+                        <Label htmlFor="youtubeFullPositionY" className="text-sm font-medium flex items-center gap-2">
+                          <MoveVertical className="h-4 w-4" />
+                          YouTube表示位置（上下）
+                          {!settings.youtubeFullDisplay && (
+                            <SettingsTooltip>
+                              画面フル表示がオフの場合は使用できません
+                            </SettingsTooltip>
+                          )}
+                        </Label>
+                        <div className="pt-4 px-2">
+                          <Slider
+                            id="youtubeFullPositionY"
+                            value={[settings.youtubeFullPositionY ?? 50]}
+                            min={0}
+                            max={100}
+                            step={1}
+                            onValueChange={(values) =>
+                              handleSettingChange('youtubeFullPositionY', Math.round(values[0]))
+                            }
+                          />
+                        </div>
+                        <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                          <span>上</span>
+                          <span>{formatPositionValue(settings.youtubeFullPositionY)}</span>
+                          <span>下</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   <Separator />
 
@@ -452,14 +714,9 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                       <Spline className="h-4 w-4" />
                       スプリングアニメーション
                       {!settings.useAMLL && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full">?</Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="max-w-xs">AMLLがオフの場合は使用できません</p>
-                          </TooltipContent>
-                        </Tooltip>
+                        <SettingsTooltip>
+                          AMLLがオフの場合は使用できません
+                        </SettingsTooltip>
                       )}
                     </Label>
                     <Switch
@@ -475,14 +732,9 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                       <Blend className="h-4 w-4" />
                       ブラーエフェクト
                       {!settings.useAMLL && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full">?</Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="max-w-xs">AMLLがオフの場合は使用できません</p>
-                          </TooltipContent>
-                        </Tooltip>
+                        <SettingsTooltip>
+                          AMLLがオフの場合は使用できません
+                        </SettingsTooltip>
                       )}
                     </Label>
                     <Switch
@@ -498,14 +750,9 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                       <ArrowUpWideNarrow className="h-4 w-4" />
                       スケールエフェクト
                       {!settings.useAMLL && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full">?</Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="max-w-xs">AMLLがオフの場合は使用できません</p>
-                          </TooltipContent>
-                        </Tooltip>
+                        <SettingsTooltip>
+                          AMLLがオフの場合は使用できません
+                        </SettingsTooltip>
                       )}
                     </Label>
                     <Switch
@@ -575,14 +822,9 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                       <MoveHorizontal className="h-4 w-4" />
                       プレーヤー位置
                       {settings.fullplayer && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full">?</Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="max-w-xs">フルプレーヤーモードでは位置の変更ができません</p>
-                          </TooltipContent>
-                        </Tooltip>
+                        <SettingsTooltip>
+                          フルプレーヤーモードでは位置の変更ができません
+                        </SettingsTooltip>
                       )}
                     </Label>
                     <div className="grid grid-cols-3 gap-1">
@@ -649,15 +891,6 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
             </TabsList>
             
             <TabsContent value="display" className="space-y-4 pb-8">
-              <Alert variant="default" className="bg-green-100 border-green-500 dark:bg-green-950/50 dark:border-green-600/50 mb-4">
-                <div className="flex items-center gap-2">
-                  <Info className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  <AlertTitle className="text-green-700 dark:text-green-300 font-medium">AMLLの使用を推奨</AlertTitle>
-                </div>
-                <AlertDescription className="text-green-700 dark:text-green-300 mt-1 pl-7">
-                  標準機能よりも優れた同期表示が可能です！
-                </AlertDescription>
-              </Alert>
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-md">レイアウトと表示</CardTitle>
@@ -687,9 +920,9 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                         ))}
                       </div>
                       {settings.useAMLL && (
-                        <div className="text-sm text-muted-foreground bg-secondary p-2 rounded">
+                        <MobileSettingsNote>
                           AMLLがオンの場合は使用できません（自動調整されます）
-                        </div>
+                        </MobileSettingsNote>
                       )}
                     </div>
 
@@ -730,8 +963,7 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            const newOffset = Number((settings.lyricOffset - 0.1).toFixed(1));
-                            handleSettingChange('lyricOffset', newOffset);
+                            handleSettingChange('lyricOffset', Number((settings.lyricOffset - 0.1).toFixed(1)));
                           }}
                           className="px-3 py-2 text-lg font-semibold"
                         >
@@ -743,8 +975,7 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                           step="0.1"
                           value={settings.lyricOffset}
                           onChange={(e) => {
-                            const newOffset = Number(e.target.value);
-                            handleSettingChange('lyricOffset', newOffset);
+                            handleSettingChange('lyricOffset', Number(e.target.value));
                           }}
                           className="flex-1 text-center"
                         />
@@ -752,26 +983,73 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            const newOffset = Number((settings.lyricOffset + 0.1).toFixed(1));
-                            handleSettingChange('lyricOffset', newOffset);
+                            handleSettingChange('lyricOffset', Number((settings.lyricOffset + 0.1).toFixed(1)));
                           }}
                           className="px-3 py-2 text-lg font-semibold"
                         >
                           +
                         </Button>
                       </div>
-                      <div className="mt-2">
+                      <div className="flex space-x-2">
                         <p className="text-sm text-gray-500 dark:text-gray-400">
-                          プラス値: 歌詞が早く表示
+                          プラス値: 早く表示
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
-                          マイナス値: 歌詞が遅く表示
+                          マイナス値: 遅く表示
                         </p>
                       </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="shortLineGroupThreshold" className="text-sm font-medium flex items-center gap-2 mb-2">
+                        <Clock className="h-4 w-4" />
+                        歌詞をグループ化する時間（秒）
+                      </Label>
+                      <div className="pt-4 px-2">
+                        <Slider
+                          id="shortLineGroupThreshold"
+                          value={[Math.min(5, Math.max(0, settings.shortLineGroupThreshold))]}
+                          min={0}
+                          max={5}
+                          step={0.1}
+                          onValueChange={(values) => {
+                            handleSettingChange(
+                              'shortLineGroupThreshold',
+                              Math.round(Math.min(5, Math.max(0, values[0] ?? 0)) * 10) / 10
+                            );
+                          }}
+                        />
+                      </div>
+                      <div className="flex justify-between mt-2">
+                        <span className="text-xs text-muted-foreground">0秒</span>
+                        <span className="text-xs text-muted-foreground">
+                          {Math.min(5, Math.max(0, settings.shortLineGroupThreshold)).toFixed(1)}秒
+                        </span>
+                        <span className="text-xs text-muted-foreground">5秒</span>
+                      </div>
+                      <MobileSettingsNote>
+                        設定された秒数未満の行は次の行とグループ化します。{settings.useAMLL && "AMLLがオンの場合は使用できません"}
+                      </MobileSettingsNote>
                     </div>
                   </div>
 
                   <Separator />
+
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="useWordTiming" className="text-sm font-medium flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      単語単位の同期を使用
+                    </Label>
+                    <Switch
+                      id="useWordTiming"
+                      checked={settings.useWordTiming}
+                      onCheckedChange={(checked) => handleSettingChange('useWordTiming', checked)}
+                      disabled={settings.useAMLL}
+                    />
+                  </div>
+                  <MobileSettingsNote>
+                    TTMLを使用していて、単語ごとに同期されている場合に<strong>カラオケ風歌詞</strong>と併用することで使用できます。{settings.useAMLL && "AMLLがオンの場合は使用できません"}
+                  </MobileSettingsNote>
 
                   <div className="flex items-center justify-between">
                     <Label htmlFor="useKaraokeLyric" className="text-sm font-medium flex items-center gap-2">
@@ -785,10 +1063,10 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                       disabled={settings.useAMLL}
                     />
                   </div>
-                  {!settings.useAMLL && (
-                    <div className="text-sm text-muted-foreground bg-secondary p-2 rounded">
+                  {settings.useAMLL && (
+                    <MobileSettingsNote>
                       AMLLがオンの場合は使用できません
-                    </div>
+                    </MobileSettingsNote>
                   )}
 
                   <div className="space-y-2">
@@ -815,44 +1093,42 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                       ))}
                     </div>
                     {(!settings.useKaraokeLyric || settings.useAMLL) && (
-                      <div className="text-sm text-muted-foreground bg-secondary p-2 rounded">
-                      {!settings.useKaraokeLyric && "カラオケ風歌詞がオフの場合は使用できません"}
-                      {settings.useAMLL && "AMLLがオンの場合は使用できません"}
-                      </div>
+                      <MobileSettingsNote>
+                        {!settings.useKaraokeLyric && "カラオケ風歌詞がオフの場合は使用できません"}
+                        {settings.useAMLL && "AMLLがオンの場合は使用できません"}
+                      </MobileSettingsNote>
                     )}
                   </div>
 
-                    <Separator />
+                  <Separator />
 
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="useTTML" className="text-sm font-medium flex items-center gap-2">
-                      <FileText className="h-4 w-4" />
-                      TTML形式を使用
+                    <Label htmlFor="showPronunciation" className="text-sm font-medium flex items-center gap-2">
+                      <Type className="h-4 w-4" />
+                      発音を表示
                     </Label>
                     <Switch
-                      id="useTTML"
-                      checked={settings.useTTML}
-                      onCheckedChange={(checked) => handleSettingChange('useTTML', checked)}
+                      id="showPronunciation"
+                      checked={settings.showPronunciation ?? false}
+                      onCheckedChange={(checked) => handleSettingChange('showPronunciation', checked)}
                     />
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="useWordTiming" className="text-sm font-medium flex items-center gap-2">
-                      <FileText className="h-4 w-4" />
-                      単語単位の同期を使用
+                    <Label htmlFor="showTranslation" className="text-sm font-medium flex items-center gap-2">
+                      <Layers className="h-4 w-4" />
+                      翻訳を表示
                     </Label>
                     <Switch
-                      id="useWordTiming"
-                      checked={settings.useWordTiming}
-                      onCheckedChange={(checked) => handleSettingChange('useWordTiming', checked)}
-                      disabled={!settings.useTTML}
+                      id="showTranslation"
+                      checked={settings.showTranslation ?? false}
+                      onCheckedChange={(checked) => handleSettingChange('showTranslation', checked)}
                     />
                   </div>
-                  {!settings.useTTML && (
-                    <div className="text-sm text-muted-foreground bg-secondary p-2 rounded">
-                      TTML形式がオフの場合は使用できません
-                    </div>
-                  )}
+
+                  <MobileSettingsNote>
+                    TTMLを使用していて、発音または翻訳に対応している場合に各機能を使用することが出来ます
+                  </MobileSettingsNote>
 
                   <Separator />
 
@@ -865,19 +1141,13 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                       id="useAMLL"
                       checked={settings.useAMLL}
                       onCheckedChange={(checked) => handleSettingChange('useAMLL', checked)}
-                      disabled={!settings.useTTML}
                     />
                   </div>
-                  {!settings.useTTML && (
-                    <div className="text-sm text-muted-foreground bg-secondary p-2 rounded">
-                      TTML形式がオフの場合は使用できません
-                    </div>
-                  )}
 
                   <div className="flex items-center justify-between">
                     <Label htmlFor="amllHidePassedLines" className="text-sm font-medium flex items-center gap-2">
                       <Layers className="h-4 w-4" />
-                      過去の歌詞行を非表示
+                      過去の歌詞を非表示
                     </Label>
                     <Switch
                       id="amllHidePassedLines"
@@ -887,9 +1157,9 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                     />
                   </div>
                   {!settings.useAMLL && (
-                    <div className="text-sm text-muted-foreground bg-secondary p-2 rounded">
+                    <MobileSettingsNote>
                       AMLLがオフの場合は使用できません
-                    </div>
+                    </MobileSettingsNote>
                   )}
 
                   <div className="flex justify-end mt-2">
@@ -907,29 +1177,86 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                   <Separator />
 
                   <div className="space-y-2">
-                      <Label htmlFor="scrollPositionOffset" className="text-sm font-medium flex items-center gap-2 mb-2">
-                        <MoveHorizontal className="h-4 w-4 rotate-90" />
-                        歌詞表示位置（上下）
-                      </Label>
-                      <div className="text-sm text-muted-foreground bg-secondary p-2 rounded mb-2">
-                        画面上での歌詞の垂直位置を調整します
-                      </div>
-                      <div className="pt-4 px-2">
-                        <Slider
-                          id="scrollPositionOffset"
-                          defaultValue={[settings.scrollPositionOffset]}
-                          min={0}
-                          max={100}
-                          step={5}
-                          onValueChange={(values) => handleSettingChange('scrollPositionOffset', values[0])}
-                        />
-                      </div>
-                      <div className="flex justify-between mt-2">
-                        <span className="text-sm text-muted-foreground">上部</span>
-                        <span className="text-sm text-muted-foreground">中央</span>
-                        <span className="text-sm text-muted-foreground">下部</span>
-                      </div>
+                    <Label htmlFor="scrollPositionOffset" className="text-sm font-medium flex items-center gap-2 mb-2">
+                      <MoveHorizontal className="h-4 w-4 rotate-90" />
+                      歌詞表示位置（上下）
+                    </Label>
+                    <div className="pt-4 px-2">
+                      <Slider
+                        id="scrollPositionOffset"
+                        defaultValue={[settings.scrollPositionOffset]}
+                        min={0}
+                        max={100}
+                        step={5}
+                        onValueChange={(values) => handleSettingChange('scrollPositionOffset', values[0])}
+                      />
                     </div>
+                    <div className="flex justify-between mt-2">
+                      <span className="text-sm text-muted-foreground">上部</span>
+                      <span className="text-sm text-muted-foreground">中央</span>
+                      <span className="text-sm text-muted-foreground">下部</span>
+                    </div>
+                    <MobileSettingsNote>
+                      画面上での歌詞の垂直位置を調整します
+                    </MobileSettingsNote>
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="useCustomColors" className="text-sm font-medium flex items-center gap-2">
+                      <Palette className="h-4 w-4" />
+                      カスタムカラーを使用
+                    </Label>
+                    <Switch
+                      id="useCustomColors"
+                      checked={settings.useCustomColors}
+                      onCheckedChange={(checked) => handleSettingChange('useCustomColors', checked)}
+                      disabled={settings.useAMLL}
+                    />
+                  </div>
+                  {settings.useAMLL && (
+                    <MobileSettingsNote>
+                      AMLLがオンの場合は使用できません
+                    </MobileSettingsNote>
+                  )}
+
+                  {settings.useCustomColors && (
+                    <>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium flex items-center gap-2">
+                          <Palette className="h-4 w-4" />
+                          歌詞カラー
+                        </Label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <ColorWithAlphaPicker
+                            label="アクティブな歌詞"
+                            value={settings.activeLyricColor}
+                            onChange={(v) => handleSettingChange('activeLyricColor', v)}
+                          />
+                          <ColorWithAlphaPicker
+                            label="非アクティブな歌詞"
+                            value={settings.inactiveLyricColor}
+                            onChange={(v) => handleSettingChange('inactiveLyricColor', v)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium flex items-center gap-2">
+                          <Palette className="h-4 w-4" />
+                          間奏の色
+                        </Label>
+                        <div className="grid grid-cols-1 gap-3">
+                          <ColorPicker
+                            label=""
+                            value={settings.interludeDotsColor}
+                            onChange={(v) => handleSettingChange('interludeDotsColor', v)}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
@@ -949,7 +1276,7 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                         defaultValue={[settings.backgroundblur]}
                         min={0}
                         max={20}
-                        step={1}
+                        step={0.1}
                         onValueChange={(values) => handleSettingChange('backgroundblur', values[0])}
                       />
                     </div>
@@ -977,10 +1304,78 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                       />
                     </div>
                     <div className="flex justify-between mt-2">
-                      <span className="text-xs text-muted-foreground">不透明</span>
                       <span className="text-xs text-muted-foreground">透明</span>
+                      <span className="text-xs text-muted-foreground">不透明</span>
                     </div>
                   </div>
+
+                  <Separator />
+
+                  <div className="flex items-center justify-between py-2">
+                    <Label htmlFor="youtubeFullDisplay" className="text-sm font-medium flex items-center gap-2">
+                      <Expand className="h-4 w-4" />
+                      YouTube画面をフル表示
+                    </Label>
+                    <Switch
+                      id="youtubeFullDisplay"
+                      checked={settings.youtubeFullDisplay}
+                      onCheckedChange={(checked) => handleSettingChange('youtubeFullDisplay', checked)}
+                    />
+                  </div>
+
+                  {settings.youtubeFullDisplay && (
+                    <>
+                      <div>
+                        <Label htmlFor="youtubeFullPositionX" className="text-sm font-medium mb-2 flex items-center gap-2">
+                          <MoveHorizontal className="h-4 w-4" />
+                          YouTube表示位置（左右）
+                        </Label>
+                        <div className="pt-4 px-2">
+                          <Slider
+                            id="youtubeFullPositionX"
+                            value={[settings.youtubeFullPositionX ?? 50]}
+                            min={0}
+                            max={100}
+                            step={1}
+                            onValueChange={(values) =>
+                              handleSettingChange('youtubeFullPositionX', Math.round(values[0]))
+                            }
+                            disabled={!settings.youtubeFullDisplay}
+                          />
+                        </div>
+                        <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                          <span>左</span>
+                          <span>{formatPositionValue(settings.youtubeFullPositionX)}</span>
+                          <span>右</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="youtubeFullPositionY" className="text-sm font-medium mb-2 flex items-center gap-2">
+                          <MoveVertical className="h-4 w-4" />
+                          YouTube表示位置（上下）
+                        </Label>
+                        <div className="pt-4 px-2">
+                          <Slider
+                            id="youtubeFullPositionY"
+                            value={[settings.youtubeFullPositionY ?? 50]}
+                            min={0}
+                            max={100}
+                            step={1}
+                            onValueChange={(values) =>
+                              handleSettingChange('youtubeFullPositionY', Math.round(values[0]))
+                            }
+                            disabled={!settings.youtubeFullDisplay}
+                          />
+                        </div>
+                        <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                          <span>上</span>
+                          <span>{formatPositionValue(settings.youtubeFullPositionY)}</span>
+                          <span>下</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   <Separator />
 
@@ -1022,9 +1417,9 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                     />
                   </div>
                   {!settings.useAMLL && (
-                    <div className="text-sm text-muted-foreground bg-secondary p-2 rounded">
+                    <MobileSettingsNote>
                       AMLLがオフの場合は使用できません
-                    </div>
+                    </MobileSettingsNote>
                   )}
 
                   <div className="flex items-center justify-between">
@@ -1040,9 +1435,9 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                     />
                   </div>
                   {!settings.useAMLL && (
-                    <div className="text-sm text-muted-foreground bg-secondary p-2 rounded">
+                    <MobileSettingsNote>
                       AMLLがオフの場合は使用できません
-                    </div>
+                    </MobileSettingsNote>
                   )}
 
                   <div className="flex items-center justify-between">
@@ -1058,9 +1453,9 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                     />
                   </div>
                   {!settings.useAMLL && (
-                    <div className="text-sm text-muted-foreground bg-secondary p-2 rounded">
+                    <MobileSettingsNote>
                       AMLLがオフの場合は使用できません
-                    </div>
+                    </MobileSettingsNote>
                   )}
 
                   <Separator />
@@ -1101,6 +1496,21 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                     />
                   </div>
 
+                  <div className="flex items-center justify-between py-2">
+                    <Label htmlFor="autoHideMobileControls" className="text-sm font-medium flex items-center gap-2">
+                      <EyeOff className="h-4 w-4" />
+                      自動でコントローラーを非表示
+                    </Label>
+                    <Switch
+                      id="autoHideMobileControls"
+                      checked={settings.autoHideMobileControls}
+                      onCheckedChange={(checked) => handleSettingChange('autoHideMobileControls', checked)}
+                    />
+                  </div>
+                  <MobileSettingsNote>
+                    再度コントローラーを表示する際は画面下部をタップすることにより表示されます
+                  </MobileSettingsNote>
+
                   <Separator />
 
                   <div className="flex items-center justify-between py-2">
@@ -1114,9 +1524,9 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                       disabled={true}
                     />
                   </div>
-                  <div className="text-sm text-muted-foreground bg-secondary p-2 rounded">
+                  <MobileSettingsNote>
                     モバイルデバイスではフルプレーヤーのみ対応しています
-                  </div>
+                  </MobileSettingsNote>
 
                   <Separator />
 
@@ -1141,9 +1551,9 @@ const MobileSettingsView: React.FC<Omit<SettingsSidebarProps, 'isMobile'>> = ({
                         </Button>
                       ))}
                     </div>
-                    <div className="text-sm text-muted-foreground bg-secondary p-2 rounded">
+                    <MobileSettingsNote>
                       フルプレーヤーモードでは位置の変更ができません
-                    </div>
+                    </MobileSettingsNote>
                   </div>
                 </CardContent>
               </Card>

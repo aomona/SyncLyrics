@@ -5,8 +5,8 @@ import YouTube, { YouTubeProps } from 'react-youtube';
 import { ArrowLeft, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
-import PlayerLyrics from '@/components/player-lyrics';
-import TTMLLyrics from '@/components/ttml-lyrics';
+import PlayerLyrics from '@/components/lrc-lyrics';
+import TTMLLyrics from '@/components/ttml/lyrics';
 import AMLLLyrics from '@/components/amll-lyrics';
 import PlayerControls from '@/components/player-controls';
 import SettingsSidebar from '@/components/settings-dialog';
@@ -15,20 +15,24 @@ import { PlayerProps, Settings } from '@/types';
 
 const DEFAULT_SETTINGS: Settings = {
   showplayercontrol: true,
+  autoHideMobileControls: true,
   fullplayer: false,
   fontSize: 'medium',
   lyricposition: 'left',
   backgroundblur: 10,
   backgroundtransparency: 50,
+  youtubeFullDisplay: true,
+  youtubeFullPositionX: 50,
+  youtubeFullPositionY: 50,
   theme: 'dark',
   playerposition: 'right',
   volume: 50,
   lyricOffset: 0,
+  shortLineGroupThreshold: 0.6,
   useKaraokeLyric: true,
   lyricProgressDirection: 'ltr',
   CustomEasing: 'cubic-bezier(0.22, 1, 0.36, 1)',
   scrollPositionOffset: 50,
-  useTTML: false,
   useWordTiming: true,
   useAMLL: true,
   amllEnableSpring: true,
@@ -40,6 +44,30 @@ const DEFAULT_SETTINGS: Settings = {
     tension: 280,
     friction: 60,
   },
+  useCustomColors: false,
+  activeLyricColor: 'rgba(255, 255, 255, 0.9)',
+  inactiveLyricColor: 'rgba(255, 255, 255, 0.5)',
+  interludeDotsColor: 'rgba(255, 255, 255, 0.7)',
+};
+
+const clampPercent = (value: number) => Math.min(Math.max(Math.round(value), 0), 100);
+
+const normalizeYoutubePosition = (value: unknown, axis: 'x' | 'y') => {
+  if (typeof value === 'number' && !Number.isNaN(value)) {
+    return clampPercent(value);
+  }
+  if (typeof value === 'string') {
+    if (axis === 'x') {
+      if (value === 'left') return 0;
+      if (value === 'center') return 50;
+      if (value === 'right') return 100;
+    } else {
+      if (value === 'top') return 0;
+      if (value === 'center') return 50;
+      if (value === 'bottom') return 100;
+    }
+  }
+  return undefined;
 };
 
 const Player: React.FC<PlayerProps> = ({
@@ -52,6 +80,11 @@ const Player: React.FC<PlayerProps> = ({
   ttmlData,
 }) => {
   const youtubeRef = useRef<YouTube['internalPlayer'] | null>(null);
+  const tickerRef = useRef<NodeJS.Timeout | null>(null);
+  const currentTimeRef = useRef<number>(0);
+  const lastUiTimeRef = useRef<number>(0);
+  const lastUiUpdateAtRef = useRef<number>(0);
+  const currentLineIndexRef = useRef<number>(-1);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
   const [currentLineIndex, setCurrentLineIndex] = useState<number>(-1);
@@ -70,17 +103,30 @@ const Player: React.FC<PlayerProps> = ({
     const savedSettings = localStorage.getItem('playerSettings');
     if (savedSettings) {
       const parsed = JSON.parse(savedSettings);
-      return { ...DEFAULT_SETTINGS, ...parsed };
+      if (parsed && typeof parsed === 'object' && 'useTTML' in parsed) {
+        delete parsed.useTTML;
+      }
+      const normalized = { ...parsed };
+      const normalizedX = normalizeYoutubePosition(parsed?.youtubeFullPositionX, 'x');
+      if (normalizedX !== undefined) {
+        normalized.youtubeFullPositionX = normalizedX;
+      }
+      const normalizedY = normalizeYoutubePosition(parsed?.youtubeFullPositionY, 'y');
+      if (normalizedY !== undefined) {
+        normalized.youtubeFullPositionY = normalizedY;
+      }
+      return { ...DEFAULT_SETTINGS, ...normalized };
     }
     return DEFAULT_SETTINGS;
   });
-
+  const settingsRef = useRef<Settings>(settings);
   const processedLyricsData = useMemo(() => {
     if (lyricsData.length > 0 && lyricsData[0].time >= 5) {
       return [{ time: 0, text: '' }, ...lyricsData];
     }
     return lyricsData;
   }, [lyricsData]);
+  const processedLyricsRef = useRef(processedLyricsData);
 
   const updateSettings = (newSettings: Partial<Settings>) => {
     setSettings((prevSettings) => {
@@ -93,6 +139,22 @@ const Player: React.FC<PlayerProps> = ({
   useEffect(() => {
     setVolume(settings.volume);
   }, [settings.volume]);
+
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  useEffect(() => {
+    processedLyricsRef.current = processedLyricsData;
+  }, [processedLyricsData]);
+
+  useEffect(() => {
+    currentLineIndexRef.current = currentLineIndex;
+  }, [currentLineIndex]);
+
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
 
   useEffect(() => {
     if (settings?.lyricOffset !== 0 && !didShowToastRef.current) {
@@ -122,7 +184,19 @@ const Player: React.FC<PlayerProps> = ({
 
   // モバイル版でのコントロール表示管理
   useEffect(() => {
-    if (!isMobile) return;
+    if (!isMobile) {
+      setMobileControlsVisible(true);
+      return;
+    }
+
+    if (!settings.autoHideMobileControls) {
+      setMobileControlsVisible(true);
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+        hideTimeoutRef.current = null;
+      }
+      return;
+    }
 
     // 再生停止時は常に表示
     if (!isPlaying) {
@@ -148,12 +222,17 @@ const Player: React.FC<PlayerProps> = ({
         clearTimeout(hideTimeoutRef.current);
       }
     };
-  }, [isMobile, isPlaying, lastInteractionTime]);
+  }, [isMobile, isPlaying, lastInteractionTime, settings.autoHideMobileControls]);
 
   // モバイル版でのコントロール表示切り替え
   const handleMobileControlsToggle = () => {
     if (!isMobile) return;
-    
+
+    if (!settings.autoHideMobileControls) {
+      setMobileControlsVisible(true);
+      return;
+    }
+
     setMobileControlsVisible(true);
     setLastInteractionTime(Date.now());
     
@@ -179,11 +258,6 @@ const Player: React.FC<PlayerProps> = ({
       setWasFullPlayerManuallySet(true);
     }
     
-    if (key === 'useAMLL' && value === true) {
-      updateSettings({ [key]: value, useTTML: true });
-      return;
-    }
-    
     updateSettings({ [key]: value });
   };
 
@@ -203,14 +277,14 @@ const Player: React.FC<PlayerProps> = ({
   const handleSkipBack = () => {
     if (!youtubeRef.current) return;
     youtubeRef.current.seekTo(0);
-    setCurrentTime(0);
+    syncTimeAndIndex(0);
   };
 
   // 曲末にスキップ
   const handleSkipForward = () => {
     if (!youtubeRef.current) return;
     youtubeRef.current.seekTo(duration);
-    setCurrentTime(duration);
+    syncTimeAndIndex(duration);
   };
 
   // 音量変更
@@ -226,7 +300,7 @@ const Player: React.FC<PlayerProps> = ({
   // スライダー操作
   const handleProgressChange = (value: number[]) => {
     const newTime = value[0];
-    setCurrentTime(newTime);
+    syncTimeAndIndex(newTime);
     if (youtubeRef.current) {
       youtubeRef.current.seekTo(newTime);
     }
@@ -237,7 +311,7 @@ const Player: React.FC<PlayerProps> = ({
     if (!youtubeRef.current) return;
     const adjustedTime = time - settings.lyricOffset;
     youtubeRef.current.seekTo(adjustedTime);
-    setCurrentTime(adjustedTime);
+    syncTimeAndIndex(adjustedTime);
     if (!isPlaying) {
       youtubeRef.current.playVideo();
       setIsPlaying(true);
@@ -369,32 +443,84 @@ const Player: React.FC<PlayerProps> = ({
     event.target.setVolume(settings.volume);
   };
 
-  const onStateChange: YouTubeProps['onStateChange'] = (event) => {
-    if (event.data === 1) {
-      const interval = setInterval(() => {
-        updateTime();
-      }, 100);
-      const stopUpdating = () => {
-        clearInterval(interval);
-      };
-      youtubeRef.current?.addEventListener('onStateChange', stopUpdating);
-    }
-  };
-
-  const updateTime = () => {
-    if (!youtubeRef.current) return;
-    const time = youtubeRef.current.getCurrentTime();
-    const adjustedTime = time + settings.lyricOffset;
-    let index = -1;
-    for (let i = 0; i < processedLyricsData.length; i++) {
-      if (processedLyricsData[i].time <= adjustedTime) {
-        index = i;
+  const findLineIndex = useCallback((time: number, lines: { time: number }[]): number => {
+    let low = 0;
+    let high = lines.length - 1;
+    let result = -1;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      if (lines[mid].time <= time) {
+        result = mid;
+        low = mid + 1;
       } else {
-        break;
+        high = mid - 1;
       }
     }
+    return result;
+  }, []);
+
+  const syncTimeAndIndex = useCallback((time: number) => {
+    const adjustedTime = time + (settingsRef.current.lyricOffset || 0);
+    const index = findLineIndex(adjustedTime, processedLyricsRef.current);
+    currentTimeRef.current = time;
+    lastUiTimeRef.current = time;
+    lastUiUpdateAtRef.current = performance.now();
+    if (index !== currentLineIndexRef.current) {
+      currentLineIndexRef.current = index;
+      setCurrentLineIndex(index);
+    }
     setCurrentTime(time);
-    setCurrentLineIndex(index);
+  }, [findLineIndex]);
+
+  const updateTime = useCallback(() => {
+    if (!youtubeRef.current) return;
+    const time = youtubeRef.current.getCurrentTime();
+    currentTimeRef.current = time;
+    const adjustedTime = time + (settingsRef.current.lyricOffset || 0);
+    const index = findLineIndex(adjustedTime, processedLyricsRef.current);
+    if (index !== currentLineIndexRef.current) {
+      currentLineIndexRef.current = index;
+      setCurrentLineIndex(index);
+    }
+    const nowMs = performance.now();
+    const shouldSyncUi =
+      Math.abs(time - lastUiTimeRef.current) >= 0.2 ||
+      nowMs - lastUiUpdateAtRef.current >= 50;
+    if (shouldSyncUi) {
+      lastUiUpdateAtRef.current = nowMs;
+      lastUiTimeRef.current = time;
+      setCurrentTime(time);
+    }
+  }, [findLineIndex]);
+
+  const stopTimeTracking = useCallback(() => {
+    if (tickerRef.current) {
+      clearInterval(tickerRef.current);
+      tickerRef.current = null;
+    }
+  }, []);
+
+  const startTimeTracking = useCallback(() => {
+    stopTimeTracking();
+    updateTime();
+    tickerRef.current = setInterval(updateTime, 50);
+  }, [stopTimeTracking, updateTime]);
+
+  useEffect(() => {
+    return () => {
+      stopTimeTracking();
+    };
+  }, [stopTimeTracking]);
+
+  const onStateChange: YouTubeProps['onStateChange'] = (event) => {
+    const isNowPlaying = event.data === 1;
+    setIsPlaying(isNowPlaying);
+    if (isNowPlaying) {
+      startTimeTracking();
+    } else {
+      stopTimeTracking();
+      updateTime();
+    }
   };
 
   // 時刻フォーマット
@@ -404,9 +530,28 @@ const Player: React.FC<PlayerProps> = ({
     return `${m}:${s}`;
   };
 
-  const getInterludeDotsColor = (): string => {
-    return resolvedTheme === 'dark' ? 'rgba(255,255,255,' : 'rgba(0,0,0,';
-  };
+  const interludeDotsColorPrefix = (() => {
+    if (!settings.useCustomColors) {
+      return resolvedTheme === 'dark' ? 'rgba(255, 255, 255, ' : 'rgba(0, 0, 0, ';
+    }
+    
+    const baseColor = settings.interludeDotsColor;
+    
+    const rgbaMatch = baseColor.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+)\s*)?\)$/i);
+    if (rgbaMatch) {
+      return `rgba(${rgbaMatch[1]}, ${rgbaMatch[2]}, ${rgbaMatch[3]}, `;
+    }
+    
+    const hex = baseColor.startsWith('#') ? baseColor.slice(1) : baseColor;
+    if (hex.length === 6) {
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, `;
+    }
+    
+    return resolvedTheme === 'dark' ? 'rgba(255, 255, 255, ' : 'rgba(0, 0, 0, ';
+  })();
 
   const renderInterludeDots = (startTime: number, endTime: number, alignment: 'left' | 'center' | 'right' = 'center') => {
     const total = endTime - startTime;
@@ -416,12 +561,12 @@ const Player: React.FC<PlayerProps> = ({
     if (dt < 0 || dt >= total) return null;
 
     const appearEnd = 2;
-    const exitStart = settings.useTTML && ttmlData ? total - 1.0 : total - 1.1;
+    const exitStart = ttmlData ? total - 1.0 : total - 1.2;
     let parentScale = 1.0;
     let opacity = 1.0;
     const transitionDuration = Math.min(Math.max(total * 0.4, 2), 6);
-    let transformTransition = `${transitionDuration}s cubic-bezier(0.19, 1, 0.22, 1)`;
-    let opacityTransition = '0.5s cubic-bezier(0.19, 1, 0.22, 1)';
+    let transformTransition = `${transitionDuration}s cubic-bezier(0.22, 1, 0.36, 1)`;
+    let opacityTransition = '0.5s cubic-bezier(0.22, 1, 0.36, 1)';
     let dotFills: [number, number, number] = [0, 0, 0];
     const availableDuration = exitStart - appearEnd - 2;
     const pulseCycleDuration = 5;
@@ -433,7 +578,7 @@ const Player: React.FC<PlayerProps> = ({
       opacity = appearRatio;
 
       if (dt < appearEnd) {
-        opacityTransition = '4s cubic-bezier(0.19, 1, 0.22, 1)';
+        opacityTransition = '5s cubic-bezier(0.22, 1, 0.36, 1)';
         parentScale = 0.9 + (0.2 * dt / appearEnd);
       } else if (dt < exitStart - 2) {
         const pulseTime = dt - appearEnd;
@@ -475,20 +620,20 @@ const Player: React.FC<PlayerProps> = ({
       dotFills = [1, 1, 1];
 
       if (dtExit < 0.8) {
-        transformTransition = '2s cubic-bezier(0.19, 1, 0.22, 1)';
+        transformTransition = '2.5s cubic-bezier(0.22, 1, 0.36, 1)';
         parentScale = 1.1;
         opacity = 1;
-      } else if (dtExit < 1.0) {
-        transformTransition = settings.useTTML && ttmlData ? '0.5s cubic-bezier(0.19, 1, 0.22, 1)' : '0.4s cubic-bezier(0.19, 1, 0.22, 1)';
-        opacityTransition = settings.useTTML && ttmlData ? '0.2s cubic-bezier(0.19, 1, 0.22, 1)' : '0.4s cubic-bezier(0.19, 1, 0.22, 1)';
-        parentScale = 0.6;
+      } else if (dtExit < 1.2) {
+        transformTransition = '1s cubic-bezier(0.22, 1, 0.36, 1)'
+        opacityTransition = '0.5s cubic-bezier(0.22, 1, 0.36, 1)'
+        parentScale = 0.8;
         opacity = 0;
       }
     }
 
     const fontSizeScale =
       settings.fontSize === 'small'
-        ? -0.1
+        ? -0.2
         : settings.fontSize === 'large'
         ? 0.2
         : 0;
@@ -514,15 +659,15 @@ const Player: React.FC<PlayerProps> = ({
           : settings.fontSize === 'small'
           ? '5px'
           : settings.fontSize === 'medium'
-          ? '10px'
-          : '15px',
+          ? '15px'
+          : '25px',
       right:
         alignment === 'right'
           ? settings.fontSize === 'small'
-            ? '5px'
-            : settings.fontSize === 'medium'
             ? '10px'
-            : '15px'
+            : settings.fontSize === 'medium'
+            ? '15px'
+            : '25px'
           : 'auto',
       transform:
         alignment === 'center'
@@ -536,8 +681,8 @@ const Player: React.FC<PlayerProps> = ({
         width: '16px',
         height: '16px',
         borderRadius: '50%',
-        backgroundColor: `${getInterludeDotsColor()}${alpha})`,
-        margin: '0 6px',
+        backgroundColor: `${interludeDotsColorPrefix}${alpha})`,
+        margin: '0 5px',
         transition: `background-color ${transformTransition}`,
       } as React.CSSProperties;
     };
@@ -558,9 +703,29 @@ const Player: React.FC<PlayerProps> = ({
     },
   };
 
+  const youtubeFullPositionStyle = useMemo<React.CSSProperties>(() => {
+    const useFullPosition = settings.youtubeFullDisplay;
+    const horizontal = clampPercent(
+      typeof settings.youtubeFullPositionX === 'number' ? settings.youtubeFullPositionX : 50
+    );
+    const vertical = clampPercent(
+      typeof settings.youtubeFullPositionY === 'number' ? settings.youtubeFullPositionY : 50
+    );
+    const left = useFullPosition ? `${horizontal}%` : '50%';
+    const top = useFullPosition ? `${vertical}%` : '50%';
+    const translateX = useFullPosition ? `-${horizontal}%` : '-50%';
+    const translateY = useFullPosition ? `-${vertical}%` : '-50%';
+
+    return {
+      left,
+      top,
+      transform: `translate(${translateX}, ${translateY})`,
+    };
+  }, [settings.youtubeFullDisplay, settings.youtubeFullPositionX, settings.youtubeFullPositionY]);
+
   return (
     <>
-      {settings.useTTML && ttmlData && settings.useAMLL ? (
+      {ttmlData && settings.useAMLL ? (
         <AMLLLyrics
           ttmlData={ttmlData}
           currentTime={currentTime}
@@ -569,8 +734,9 @@ const Player: React.FC<PlayerProps> = ({
           isMobile={isMobile}
           isPlaying={isPlaying}
           resolvedTheme={theme}
+          mobileControlsVisible={mobileControlsVisible}
         />
-      ) : settings.useTTML && ttmlData ? (
+      ) : ttmlData ? (
         <TTMLLyrics
           lyricsData={processedLyricsData}
           currentTime={currentTime}
@@ -583,6 +749,7 @@ const Player: React.FC<PlayerProps> = ({
           renderInterludeDots={renderInterludeDots}
           smoothScrollTo={smoothScrollTo}
           ttmlData={ttmlData}
+          mobileControlsVisible={mobileControlsVisible}
         />
       ) : (
         <PlayerLyrics
@@ -596,6 +763,7 @@ const Player: React.FC<PlayerProps> = ({
           onLyricClick={handleLyricClick}
           renderInterludeDots={renderInterludeDots}
           smoothScrollTo={smoothScrollTo}
+          mobileControlsVisible={mobileControlsVisible}
         />
       )}
 
@@ -619,26 +787,41 @@ const Player: React.FC<PlayerProps> = ({
         onMobileControlsToggle={handleMobileControlsToggle}
       />
 
-      <div className="fixed z-0 w-full h-full">
+      <div className="fixed inset-0 z-0 overflow-hidden">
         <div
-          className="w-full h-full fixed top-0 left-0"
+          className="absolute inset-0"
           style={{
-            backgroundColor: resolvedTheme === 'dark' 
-              ? `rgba(0, 0, 0, ${settings.backgroundtransparency / 100})`
-              : `rgba(255, 255, 255, ${settings.backgroundtransparency / 100})`,
+            backgroundColor:
+              resolvedTheme === 'dark'
+                ? `rgba(0, 0, 0, ${settings.backgroundtransparency / 100})`
+                : `rgba(255, 255, 255, ${settings.backgroundtransparency / 100})`,
             backdropFilter: settings.backgroundblur > 0 ? `blur(${settings.backgroundblur}px)` : 'none',
+            zIndex: 1,
           }}
         />
-        <YouTube
-          videoId={audioUrl}
-          opts={opts}
-          onReady={onPlayerReady}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-          onStateChange={onStateChange}
-          style={{ width: '100%', height: '100%' }}
-          iframeClassName="w-full h-full"
-        />
+        <div className="absolute inset-0" style={{ zIndex: 0 }}>
+          <div
+            className="absolute"
+            style={{
+              width: settings.youtubeFullDisplay
+                ? 'max(100vw, calc(100vh * 16 / 9))'
+                : 'min(100vw, calc(100vh * 16 / 9))',
+              height: settings.youtubeFullDisplay
+                ? 'max(100vh, calc(100vw * 9 / 16))'
+                : 'min(100vh, calc(100vw * 9 / 16))',
+              ...youtubeFullPositionStyle,
+            }}
+          >
+            <YouTube
+              videoId={audioUrl}
+              opts={opts}
+              onReady={onPlayerReady}
+              onStateChange={onStateChange}
+              style={{ width: '100%', height: '100%' }}
+              iframeClassName="w-full h-full"
+            />
+          </div>
+        </div>
       </div>
 
       <SettingsSidebar
